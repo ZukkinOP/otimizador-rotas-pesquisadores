@@ -395,18 +395,21 @@ function updateApiStatus(text, color) {
 }
 
 // ---- GOOGLE GEOCODING ----
-async function geocodeWithGoogle(address, apiKey) {
-  const q = encodeURIComponent(address);
-  const resp = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${q}&key=${apiKey}&language=pt-BR&region=br`);
-  const data = await resp.json();
-  if (data.status === 'OK' && data.results && data.results.length > 0) {
-    const loc = data.results[0].geometry.location;
-    return { lat: loc.lat, lng: loc.lng, display: data.results[0].formatted_address };
-  }
-  if (data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST') {
-    throw new Error(`Google API: ${data.error_message || data.status}`);
-  }
-  return null;
+function geocodeWithGoogle(address) {
+  return new Promise((resolve, reject) => {
+    if (!window.google || !window.google.maps) { reject(new Error('Google Maps não carregou')); return; }
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: address, region: 'br' }, (results, status) => {
+      if (status === 'OK' && results && results.length > 0) {
+        const loc = results[0].geometry.location;
+        resolve({ lat: loc.lat(), lng: loc.lng(), display: results[0].formatted_address });
+      } else if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
+        reject(new Error('Google Geocoder: ' + status));
+      } else {
+        resolve(null);
+      }
+    });
+  });
 }
 
 // ---- NOMINATIM GEOCODING (fallback) ----
@@ -427,17 +430,15 @@ async function geocodeAddress(address) {
 
   const apiKey = getGoogleApiKey();
 
-  // Try Google first if API key is provided
-  if (apiKey) {
+  // Try Google first if API key is provided and Google Maps JS is loaded
+  if (apiKey && window.google && window.google.maps) {
     try {
-      const result = await geocodeWithGoogle(address, apiKey);
+      const result = await geocodeWithGoogle(address);
       geocodingAvailable = true;
       geocodingProvider = 'google';
-      updateApiStatus('Google Maps API ativa', '#4ade80');
       return result;
     } catch(e) {
       console.warn('Google Geocoding falhou:', e.message);
-      updateApiStatus('Google API erro: ' + e.message, '#f87171');
       // Fall through to Nominatim
     }
   }
