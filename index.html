@@ -971,7 +971,7 @@ function generateResults(data, inicio, desloc, cidade) {
           <div class="tl-dot" style="border-color:${r.color};background:${r.color};"></div>
           <div class="tl-time">${minutesToTime(startTime)} → ${minutesToTime(Math.round(currentTime))}</div>
           <div class="tl-desc">${m.name} ${deadlineTag}</div>
-          <div class="tl-dur">${m.items} itens | ${formatDuration(collectionTime)} | ${travelKm}km ~${travelMin}min</div>
+          <div class="tl-dur">${m.items} itens | ${formatDuration(collectionTime)} | ${travelKm !== '?' ? travelKm + 'km ~' + travelMin + 'min' : '~' + travelMin + 'min (endereço não localizado)'}</div>
         </div>`;
     });
     // End summary
