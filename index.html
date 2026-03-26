@@ -6,7 +6,11 @@
 <title>Otimizador de Rotas</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAnO5hhAbWl5nu5tQoTV4TL2n1CGzrHgTs&libraries=geometry" async defer></script>
+<script>
+  var googleMapsReady = false;
+  function initGoogleMaps() { googleMapsReady = true; console.log('Google Maps JS API carregada com sucesso'); }
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAnO5hhAbWl5nu5tQoTV4TL2n1CGzrHgTs&libraries=geometry&callback=initGoogleMaps" async defer></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f1f5f9; color: #334155; }
@@ -412,33 +416,53 @@ function geocodeWithGoogle(address) {
   });
 }
 
+// ---- WAIT FOR GOOGLE MAPS TO LOAD ----
+function waitForGoogleMaps(timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    if (window.google && window.google.maps) { resolve(true); return; }
+    const start = Date.now();
+    const check = setInterval(() => {
+      if (window.google && window.google.maps) {
+        clearInterval(check);
+        resolve(true);
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(check);
+        resolve(false);
+      }
+    }, 200);
+  });
+}
+
 // ---- UNIFIED GEOCODING (Google Maps JS only) ----
 async function geocodeAddress(address) {
   if (!address || address.trim() === '') return null;
-  if (geocodingAvailable === false) return null;
 
   const apiKey = getGoogleApiKey();
+  if (!apiKey) {
+    updateApiStatus('API key do Google não configurada', '#f87171');
+    return null;
+  }
 
-  if (apiKey && window.google && window.google.maps) {
-    try {
-      const result = await geocodeWithGoogle(address);
-      geocodingAvailable = true;
-      geocodingProvider = 'google';
-      return result;
-    } catch(e) {
-      console.warn('Google Geocoding falhou:', e.message);
-      if (geocodingAvailable === null) {
-        geocodingAvailable = false;
-        updateApiStatus('Google Geocoding indisponível', '#f87171');
-      }
-    }
-  } else {
-    if (geocodingAvailable === null) {
-      geocodingAvailable = false;
-      updateApiStatus('Google Maps não carregou (verifique a API key)', '#f87171');
+  // Aguarda Google Maps carregar (até 10s)
+  if (!window.google || !window.google.maps) {
+    updateApiStatus('Aguardando Google Maps carregar...', '#fbbf24');
+    const loaded = await waitForGoogleMaps(10000);
+    if (!loaded) {
+      updateApiStatus('Google Maps não carregou (verifique a API key e conexão)', '#f87171');
+      return null;
     }
   }
-  return null;
+
+  try {
+    const result = await geocodeWithGoogle(address);
+    geocodingAvailable = true;
+    geocodingProvider = 'google';
+    return result;
+  } catch(e) {
+    console.warn('Google Geocoding falhou:', e.message);
+    updateApiStatus('Google Geocoding erro: ' + e.message, '#f87171');
+    return null;
+  }
 }
 
 // ---- GOOGLE DISTANCE MATRIX (client-side, funciona no navegador) ----
@@ -481,9 +505,7 @@ function getDistanceMatrix(origin, destination) {
 async function getTravelInfo(origin, destination) {
   if (!origin || !destination) return { km: null, mins: 15, source: 'default' };
 
-  const apiKey = getGoogleApiKey();
-
-  if (apiKey && window.google && window.google.maps) {
+  if (window.google && window.google.maps) {
     const dm = await getDistanceMatrix(origin, destination);
     if (dm) {
       return {
@@ -653,8 +675,8 @@ async function calculateRoutes() {
   }
   // Reset directions cache for fresh calculation
   directionsCache = {};
-  const apiKey = getGoogleApiKey();
-  const useGoogle = apiKey.length > 0;
+  geocodingAvailable = null;
+  geocodingProvider = null;
   const delayMs = 50; // Rate limit entre chamadas de geocodificação
 
   // Geocode all addresses
