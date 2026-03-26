@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Otimizador de Rotas</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f1f5f9; color: #334155; }
+  .header {
+    background: #ffffff;
+    padding: 12px 24px; border-bottom: 1px solid #e2e8f0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .header-logo img, .header-logo svg { height: 28px; }
+  .header h1 { font-size: 16px; font-weight: 600; color: #475569; }
+  .header-info { font-size: 12px; color: #94a3b8; }
+  .main-layout { display: flex; height: calc(100vh - 53px); }
+  /* SIDEBAR */
+  .sidebar {
+    width: 520px; min-width: 520px; overflow-y: auto; padding: 16px;
+    background: #f8fafc; border-right: 1px solid #e2e8f0;
+  }
+  /* TABS */
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; background: #e2e8f0; border-radius: 8px; padding: 4px; }
+  .tab {
+    flex: 1; padding: 8px 10px; border: none; border-radius: 6px;
+    background: transparent; color: #64748b; cursor: pointer;
+    font-size: 12px; font-weight: 600; transition: all 0.2s;
+  }
+  .tab.active { background: #ef4444; color: white; }
+  .tab:hover:not(.active) { background: #cbd5e1; color: #334155; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  /* FORM STYLES */
+  .form-section {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  .form-section-title {
+    font-size: 12px; font-weight: 700; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .form-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .form-group { flex: 1; }
+  .form-group label {
+    display: block; font-size: 11px; color: #94a3b8; margin-bottom: 3px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .form-group input, .form-group select {
+    width: 100%; padding: 7px 10px; border: 1px solid #e2e8f0;
+    border-radius: 6px; background: #f8fafc; color: #334155;
+    font-size: 13px; outline: none; transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: #ef4444; }
+  .form-group input::placeholder { color: #cbd5e1; }
+  /* Researcher card in form */
+  .researcher-card {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 12px; margin-bottom: 10px; position: relative;
+  }
+  .researcher-card .rc-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .researcher-card .rc-name { font-size: 13px; font-weight: 700; color: #334155; }
+  .researcher-card .rc-color {
+    width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+    margin-right: 6px; vertical-align: middle;
+  }
+  .btn-remove {
+    background: #fef2f2; border: 1px solid #fecaca; color: #ef4444;
+    padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
+  }
+  .btn-remove:hover { background: #fee2e2; }
+  .market-entry {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+    padding: 8px; margin-top: 8px; position: relative;
+  }
+  .market-entry .me-title { font-size: 11px; color: #94a3b8; font-weight: 600; margin-bottom: 6px; }
+  .btn-add-market {
+    background: transparent; border: 1px dashed #cbd5e1; color: #94a3b8;
+    padding: 6px; border-radius: 6px; cursor: pointer; font-size: 11px;
+    width: 100%; margin-top: 6px; transition: all 0.2s;
+  }
+  .btn-add-market:hover { border-color: #ef4444; color: #ef4444; }
+  /* Main buttons */
+  .btn-primary {
+    background: linear-gradient(135deg, #ef4444, #dc2626); border: none;
+    color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 700; width: 100%; margin-top: 8px;
+    transition: all 0.2s; letter-spacing: 0.5px;
+  }
+  .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-secondary {
+    background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a;
+    padding: 8px 16px; border-radius: 6px; cursor: pointer;
+    font-size: 12px; font-weight: 600; width: 100%; margin-top: 6px;
+  }
+  .btn-secondary:hover { background: #dcfce7; }
+  /* RESULTS STYLES */
+  .card {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 14px; margin-bottom: 10px;
+  }
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .card-title { font-size: 13px; font-weight: 700; }
+  .badge {
+    padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700;
+  }
+  .badge-red { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .badge-green { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .badge-yellow { background: #fefce8; color: #ca8a04; border: 1px solid #fde68a; }
+  .stat-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .stat {
+    flex: 1; background: #f8fafc; border-radius: 6px; padding: 6px 8px; text-align: center;
+    border: 1px solid #e2e8f0;
+  }
+  .stat-label { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-size: 14px; font-weight: 700; margin-top: 1px; color: #334155; }
+  .timeline { position: relative; padding-left: 20px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 6px; top: 4px; bottom: 4px;
+    width: 2px; background: #e2e8f0;
+  }
+  .tl-item { position: relative; margin-bottom: 8px; }
+  .tl-dot {
+    position: absolute; left: -18px; top: 3px; width: 10px; height: 10px;
+    border-radius: 50%; border: 2px solid;
+  }
+  .tl-time { font-size: 11px; color: #94a3b8; font-weight: 600; }
+  .tl-desc { font-size: 12px; color: #475569; }
+  .tl-dur { font-size: 10px; color: #94a3b8; font-style: italic; }
+  .reco-box {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+    border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px; margin-bottom: 10px;
+  }
+  .reco-box h3 { color: #16a34a; font-size: 13px; margin-bottom: 6px; }
+  .reco-box p { font-size: 12px; color: #475569; line-height: 1.5; }
+  .alert-box {
+    background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
+    border: 1px solid #fecaca; border-radius: 10px; padding: 14px; margin-bottom: 10px;
+  }
+  .alert-box h3 { color: #dc2626; font-size: 13px; margin-bottom: 6px; }
+  .alert-box p { font-size: 12px; color: #475569; line-height: 1.5; }
+  .warn-box {
+    background: linear-gradient(135deg, #fefce8 0%, #ffffff 100%);
+    border: 1px solid #fde68a; border-radius: 10px; padding: 14px; margin-bottom: 10px;
+  }
+  .warn-box h3 { color: #ca8a04; font-size: 13px; margin-bottom: 6px; }
+  .warn-box p { font-size: 12px; color: #475569; line-height: 1.5; }
+  .section-title {
+    font-size: 11px; font-weight: 700; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 8px;
+  }
+  /* Gantt */
+  .gantt-container { margin-bottom: 12px; }
+  .gantt-header {
+    display: flex; justify-content: space-between;
+    font-size: 10px; color: #94a3b8; margin-bottom: 3px; padding: 0 2px;
+  }
+  .gantt-track {
+    height: 24px; background: #f1f5f9; border-radius: 5px;
+    position: relative; overflow: hidden; border: 1px solid #e2e8f0; margin-bottom: 4px;
+  }
+  .gantt-bar {
+    position: absolute; top: 2px; height: 20px; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700; color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .gantt-label { font-size: 10px; margin-bottom: 2px; color: #475569; }
+  .gantt-deadline { position: absolute; top: 0; height: 100%; width: 2px; background: #ef4444; }
+  /* Map */
+  .map-container { flex: 1; position: relative; }
+  #map { width: 100%; height: 100%; }
+  /* Summary table */
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th { font-size: 10px; color: #94a3b8; text-align: left; padding: 5px 6px; border-bottom: 1px solid #e2e8f0; }
+  td { font-size: 11px; padding: 5px 6px; border-bottom: 1px solid #f1f5f9; color: #475569; }
+  /* Empty state */
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: #94a3b8;
+  }
+  .empty-state h3 { font-size: 16px; margin-bottom: 8px; color: #64748b; }
+  .empty-state p { font-size: 13px; }
+  /* Scrollbar */
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo" style="font-size:24px;font-weight:900;color:#ef4444;letter-spacing:-0.5px;line-height:1;">Zukkin</div>
+    <div style="width:1px;height:24px;background:#e2e8f0;"></div>
+    <h1>Otimizador de Rotas</h1>
+  </div>
+  <div class="header-info" id="headerInfo">Preencha os dados e clique em "Calcular Rotas"</div>
+</div>
+<div class="main-layout">
+  <div class="sidebar">
+    <div class="tab-bar">
+      <button class="tab active" onclick="showTab('entrada', event)">Entrada de Dados</button>
+      <button class="tab" onclick="showTab('resultado', event)">Resultado</button>
+      <button class="tab" onclick="showTab('recomendacao', event)">Recomendação</button>
+    </div>
+    <!-- ENTRADA DE DADOS -->
+    <div id="entrada" class="panel active">
+      <div class="form-section">
+        <div class="form-section-title">Configurações Gerais</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cidade</label>
+            <input type="text" id="cidade" placeholder="Ex: Feira de Santana/BA" value="Feira de Santana/BA">
+          </div>
+          <div class="form-group" style="max-width:140px;">
+            <label>Início jornada</label>
+            <input type="time" id="inicioJornada" value="08:00">
+          </div>
+        </div>
+        <!-- API key pode ser configurada via JS: document.getElementById('googleApiKey').value = 'SUA_KEY' -->
+        <input type="hidden" id="googleApiKey" value="">
+        <div id="apiStatus" style="display:none;"></div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">
+          Pesquisadores
+          <button class="btn-add-market" style="width:auto;padding:4px 12px;" onclick="addResearcher()">+ Pesquisador</button>
+        </div>
+        <div id="researchersList"></div>
+      </div>
+      <button class="btn-primary" onclick="calculateRoutes()">CALCULAR ROTAS</button>
+      <button class="btn-secondary" onclick="loadSampleData()">Carregar dados de exemplo (Feira de Santana)</button>
+    </div>
+    <!-- RESULTADO -->
+    <div id="resultado" class="panel">
+      <div id="resultContent">
+        <div class="empty-state">
+          <h3>Nenhum cálculo realizado</h3>
+          <p>Preencha os dados na aba "Entrada de Dados" e clique em "Calcular Rotas"</p>
+        </div>
+      </div>
+    </div>
+    <!-- RECOMENDACAO -->
+    <div id="recomendacao" class="panel">
+      <div id="recoContent">
+        <div class="empty-state">
+          <h3>Aguardando cálculo</h3>
+          <p>A recomendação será gerada após o cálculo das rotas</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="map-container">
+    <div id="map"></div>
+  </div>
+</div>
+<script>
+// ======================== STATE ========================
+const COLORS = ['#f97316','#a855f7','#3b82f6','#10b981','#ef4444','#ec4899','#06b6d4','#eab308'];
+let researchers = [];
+let researcherIdCounter = 0;
+let map, markers = [], routeLines = [];
+// ======================== MAP INIT ========================
+map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-12.260, -38.955], 13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+// ======================== TAB NAVIGATION ========================
+function showTab(tabId, evt) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  if (evt && evt.target) evt.target.classList.add('active');
+  else if (window.event && window.event.target) window.event.target.classList.add('active');
+}
+// ======================== RESEARCHER MANAGEMENT ========================
+function addResearcher() {
+  const id = researcherIdCounter++;
+  const color = COLORS[researchers.length % COLORS.length];
+  researchers.push({ id, color, markets: [{ id: 0 }], marketIdCounter: 1 });
+  renderResearchers();
+}
+function removeResearcher(id) {
+  researchers = researchers.filter(r => r.id !== id);
+  researchers.forEach((r, i) => r.color = COLORS[i % COLORS.length]);
+  renderResearchers();
+}
+function addMarket(researcherId) {
+  const r = researchers.find(r => r.id === researcherId);
+  if (r) {
+    r.markets.push({ id: r.marketIdCounter++ });
+    renderResearchers();
+  }
+}
+function removeMarket(researcherId, marketId) {
+  const r = researchers.find(r => r.id === researcherId);
+  if (r && r.markets.length > 1) {
+    r.markets = r.markets.filter(m => m.id !== marketId);
+    renderResearchers();
+  }
+}
+function renderResearchers() {
+  const container = document.getElementById('researchersList');
+  container.innerHTML = researchers.map((r, idx) => `
+    <div class="researcher-card" data-rid="${r.id}">
+      <div class="rc-header">
+        <div>
+          <span class="rc-color" style="background:${r.color}"></span>
+          <span class="rc-name">Pesquisador ${idx + 1}</span>
+        </div>
+        <button class="btn-remove" onclick="removeResearcher(${r.id})">Remover</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nome completo</label>
+          <input type="text" id="rName_${r.id}" placeholder="Nome do pesquisador">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>PPM (prod/min)</label>
+          <input type="number" id="rPPM_${r.id}" step="0.01" min="0.1" placeholder="Ex: 2.62">
+        </div>
+        <div class="form-group">
+          <label>Conformidade (%)</label>
+          <input type="number" id="rConf_${r.id}" step="0.01" min="0" max="100" placeholder="Ex: 41.43">
+        </div>
+        <div class="form-group">
+          <label>Contrato (h)</label>
+          <input type="number" id="rContract_${r.id}" min="1" max="24" placeholder="Ex: 8">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Endereço da casa</label>
+          <input type="text" id="rHome_${r.id}" placeholder="Rua, Bairro - Cidade/UF">
+        </div>
+      </div>
+      <div class="section-title" style="margin:8px 0 4px;">Mercados</div>
+      ${r.markets.map((m, mi) => `
+        <div class="market-entry" data-mid="${m.id}">
+          <div class="me-title" style="display:flex;justify-content:space-between;">
+            Mercado ${mi + 1}
+            ${r.markets.length > 1 ? `<button class="btn-remove" style="font-size:10px;padding:2px 6px;" onclick="removeMarket(${r.id},${m.id})">X</button>` : ''}
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nome do mercado</label>
+              <input type="text" id="mName_${r.id}_${m.id}" placeholder="Ex: Mix Mateus">
+            </div>
+            <div class="form-group" style="max-width:90px;">
+              <label>Itens</label>
+              <input type="number" id="mItems_${r.id}_${m.id}" placeholder="374" min="1">
+            </div>
+            <div class="form-group" style="max-width:120px;">
+              <label>Prazo entrega</label>
+              <input type="time" id="mDeadline_${r.id}_${m.id}" value="17:00">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Endereço completo</label>
+              <input type="text" id="mAddr_${r.id}_${m.id}" placeholder="Av., número - Bairro, Cidade/UF">
+            </div>
+          </div>
+        </div>
+      `).join('')}
+      <button class="btn-add-market" onclick="addMarket(${r.id})">+ Adicionar Mercado</button>
+    </div>
+  `).join('');
+}
+// ======================== GEOCODING & DISTANCE ========================
+let geocodingAvailable = null; // null = not tested yet
+let geocodingProvider = null; // 'google' or 'nominatim'
+// Cache for Directions API results to avoid duplicate requests
+let directionsCache = {};
+
+function getGoogleApiKey() {
+  return (document.getElementById('googleApiKey')?.value || '').trim();
+}
+
+function updateApiStatus(text, color) {
+  const el = document.getElementById('apiStatus');
+  if (el) { el.textContent = text; el.style.color = color || '#64748b'; }
+}
+
+// ---- GOOGLE GEOCODING ----
+async function geocodeWithGoogle(address, apiKey) {
+  const q = encodeURIComponent(address);
+  const resp = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${q}&key=${apiKey}&language=pt-BR&region=br`);
+  const data = await resp.json();
+  if (data.status === 'OK' && data.results && data.results.length > 0) {
+    const loc = data.results[0].geometry.location;
+    return { lat: loc.lat, lng: loc.lng, display: data.results[0].formatted_address };
+  }
+  if (data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST') {
+    throw new Error(`Google API: ${data.error_message || data.status}`);
+  }
+  return null;
+}
+
+// ---- NOMINATIM GEOCODING (fallback) ----
+async function geocodeWithNominatim(address) {
+  const q = encodeURIComponent(address + ', Brasil');
+  const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`);
+  const data = await resp.json();
+  if (data && data.length > 0) {
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), display: data[0].display_name };
+  }
+  return null;
+}
+
+// ---- UNIFIED GEOCODING (Google → Nominatim → null) ----
+async function geocodeAddress(address) {
+  if (!address || address.trim() === '') return null;
+  if (geocodingAvailable === false) return null;
+
+  const apiKey = getGoogleApiKey();
+
+  // Try Google first if API key is provided
+  if (apiKey) {
+    try {
+      const result = await geocodeWithGoogle(address, apiKey);
+      geocodingAvailable = true;
+      geocodingProvider = 'google';
+      updateApiStatus('Google Maps API ativa', '#4ade80');
+      return result;
+    } catch(e) {
+      console.warn('Google Geocoding falhou:', e.message);
+      updateApiStatus('Google API erro: ' + e.message, '#f87171');
+      // Fall through to Nominatim
+    }
+  }
+
+  // Fallback: Nominatim
+  try {
+    const result = await geocodeWithNominatim(address);
+    geocodingAvailable = true;
+    geocodingProvider = 'nominatim';
+    if (!apiKey) updateApiStatus('Usando Nominatim (sem API key)', '#fbbf24');
+    return result;
+  } catch(e) {
+    console.warn('Geocoding indisponível:', e.message);
+    if (geocodingAvailable === null) {
+      geocodingAvailable = false;
+      updateApiStatus('Geocodificação indisponível (abra via HTTPS)', '#f87171');
+    }
+  }
+  return null;
+}
+
+// ---- GOOGLE DIRECTIONS API ----
+async function getDirections(origin, destination, apiKey) {
+  if (!apiKey || !origin || !destination) return null;
+  // Check cache
+  const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}`;
+  if (directionsCache[cacheKey]) return directionsCache[cacheKey];
+
+  try {
+    const resp = await fetch(
+      `https://maps.googleapis.com/maps/api/directions/json?` +
+      `origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}` +
+      `&mode=driving&language=pt-BR&key=${apiKey}`
+    );
+    const data = await resp.json();
+    if (data.status === 'OK' && data.routes && data.routes.length > 0) {
+      const leg = data.routes[0].legs[0];
+      const result = {
+        distanceKm: leg.distance.value / 1000,
+        durationMin: Math.round(leg.duration.value / 60),
+        distanceText: leg.distance.text,
+        durationText: leg.duration.text,
+        polyline: data.routes[0].overview_polyline?.points || null
+      };
+      directionsCache[cacheKey] = result;
+      return result;
+    }
+  } catch(e) {
+    console.warn('Directions API falhou:', e.message);
+  }
+  return null;
+}
+
+// ---- GET TRAVEL INFO (Directions API → Haversine fallback) ----
+async function getTravelInfo(origin, destination) {
+  if (!origin || !destination) return { km: null, mins: 15, source: 'default' };
+
+  const apiKey = getGoogleApiKey();
+
+  // Try Directions API first
+  if (apiKey) {
+    const dir = await getDirections(origin, destination, apiKey);
+    if (dir) {
+      return {
+        km: dir.distanceKm,
+        mins: dir.durationMin,
+        source: 'directions',
+        polyline: dir.polyline,
+        distanceText: dir.distanceText,
+        durationText: dir.durationText
+      };
+    }
+  }
+
+  // Fallback: Haversine
+  const km = haversineKm(origin.lat, origin.lng, destination.lat, destination.lng);
+  const mins = estimateDriveMinutes(km);
+  return { km, mins, source: 'haversine' };
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+    Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function estimateDriveMinutes(km) {
+  // ~25 km/h average speed in urban areas
+  return Math.round(km / 25 * 60);
+}
+// Nearest-neighbor route ordering
+function optimizeRoute(homeCoord, marketCoords) {
+  if (marketCoords.length <= 1) return marketCoords.map((_, i) => i);
+  const visited = [];
+  const remaining = marketCoords.map((m, i) => i);
+  let current = homeCoord;
+  while (remaining.length > 0) {
+    let bestIdx = 0, bestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const mc = marketCoords[remaining[i]];
+      if (!mc || !current) continue;
+      const d = haversineKm(current.lat, current.lng, mc.lat, mc.lng);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    const chosen = remaining.splice(bestIdx, 1)[0];
+    visited.push(chosen);
+    if (marketCoords[chosen]) current = marketCoords[chosen];
+  }
+  return visited;
+}
+// Route optimization considering deadlines: earliest deadline first, then nearest-neighbor within same window
+function optimizeRouteWithDeadlines(homeCoord, marketCoords, markets, timePerMarket, startTime, defaultTravel) {
+  if (markets.length <= 1) return markets.map((_, i) => i);
+  // Group by deadline urgency, then optimize by distance within groups
+  const indices = markets.map((_, i) => i);
+  // Sort primarily by deadline, secondarily by distance from previous point
+  indices.sort((a, b) => markets[a].deadlineMin - markets[b].deadlineMin);
+  // If we have coordinates, refine: within similar deadlines (<=60min apart), prefer nearest
+  if (homeCoord && marketCoords.some(c => c)) {
+    const result = [];
+    const remaining = [...indices];
+    let current = homeCoord;
+    let currentTime = startTime;
+    while (remaining.length > 0) {
+      // Find the most urgent remaining market (earliest deadline in remaining)
+      const earliestDeadline = Math.min(...remaining.map(i => markets[i].deadlineMin));
+      // Get all markets within 60min of the earliest deadline (similar urgency)
+      const urgentGroup = remaining.filter(i => markets[i].deadlineMin <= earliestDeadline + 60);
+      // Among urgent group, pick the nearest one
+      let bestIdx = 0, bestDist = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        if (!urgentGroup.includes(remaining[i])) continue;
+        const mc = marketCoords[remaining[i]];
+        if (!mc || !current) continue;
+        const d = haversineKm(current.lat, current.lng, mc.lat, mc.lng);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      const chosen = remaining.splice(bestIdx, 1)[0];
+      result.push(chosen);
+      if (marketCoords[chosen]) current = marketCoords[chosen];
+    }
+    return result;
+  }
+  return indices; // fallback: sorted by deadline only
+}
+// ======================== CALCULATION ENGINE ========================
+function timeToMinutes(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+function minutesToTime(mins) {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+function formatDuration(mins) {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  if (h === 0) return `${m}min`;
+  return `${h}h${m > 0 ? m + 'm' : ''}`;
+}
+async function calculateRoutes() {
+  try {
+  const inicioJornada = timeToMinutes(document.getElementById('inicioJornada').value);
+  const tempoDeslocamento = 15; // default estimate when no geocoding
+  const cidade = document.getElementById('cidade').value;
+  // ===== FIX 4: INPUT VALIDATION =====
+  // Check that at least one researcher exists
+  if (researchers.length === 0) {
+    throw new Error('Adicione pelo menos um pesquisador.');
+  }
+  // Check that each researcher has a name or provide default
+  researchers.forEach((r, idx) => {
+    const nameEl = document.getElementById(`rName_${r.id}`);
+    if (!nameEl || !nameEl.value.trim()) {
+      nameEl.value = `Pesquisador ${idx + 1}`;
+    }
+  });
+  // Check PPM > 0 when filled, and items > 0 for each market
+  let validationErrors = [];
+  researchers.forEach((r, idx) => {
+    const ppmVal = document.getElementById(`rPPM_${r.id}`)?.value;
+    if (ppmVal && parseFloat(ppmVal) <= 0) {
+      validationErrors.push(`Pesquisador ${idx + 1}: PPM deve ser maior que 0`);
+    }
+    r.markets.forEach((m, mi) => {
+      const itemsVal = document.getElementById(`mItems_${r.id}_${m.id}`)?.value;
+      if (itemsVal && parseInt(itemsVal) <= 0) {
+        validationErrors.push(`Pesquisador ${idx + 1}, Mercado ${mi + 1}: Itens deve ser maior que 0`);
+      }
+    });
+  });
+  if (validationErrors.length > 0) {
+    throw new Error('Erros de validação:\n' + validationErrors.join('\n'));
+  }
+  // Check if any researcher has PPM/Conf/Contract filled
+  let hasPerformanceData = false;
+  researchers.forEach(r => {
+    const ppmVal = document.getElementById(`rPPM_${r.id}`)?.value;
+    const confVal = document.getElementById(`rConf_${r.id}`)?.value;
+    const contractVal = document.getElementById(`rContract_${r.id}`)?.value;
+    if (ppmVal && confVal && contractVal) hasPerformanceData = true;
+  });
+  // Show loading state
+  document.getElementById('headerInfo').textContent = 'Calculando distâncias... aguarde';
+  document.querySelectorAll('.btn-primary')[0].textContent = 'CALCULANDO...';
+  document.querySelectorAll('.btn-primary')[0].disabled = true;
+  // Geocode all addresses
+  const allAddresses = [];
+  const researcherData = [];
+  for (const [idx, r] of researchers.entries()) {
+    const name = document.getElementById(`rName_${r.id}`)?.value || `Pesquisador ${idx+1}`;
+    const ppmVal = document.getElementById(`rPPM_${r.id}`)?.value;
+    const confVal = document.getElementById(`rConf_${r.id}`)?.value;
+    const contractVal = document.getElementById(`rContract_${r.id}`)?.value;
+    const ppm = ppmVal ? parseFloat(ppmVal) : null;
+    const conf = confVal ? parseFloat(confVal) : null;
+    const contract = contractVal ? parseInt(contractVal) : null;
+    const home = document.getElementById(`rHome_${r.id}`)?.value || '';
+    const markets = r.markets.map(m => ({
+      name: document.getElementById(`mName_${r.id}_${m.id}`)?.value || 'Mercado',
+      addr: document.getElementById(`mAddr_${r.id}_${m.id}`)?.value || '',
+      items: parseInt(document.getElementById(`mItems_${r.id}_${m.id}`)?.value) || 374,
+      deadline: document.getElementById(`mDeadline_${r.id}_${m.id}`)?.value || '17:00',
+      deadlineMin: timeToMinutes(document.getElementById(`mDeadline_${r.id}_${m.id}`)?.value || '17:00')
+    }));
+    researcherData.push({ id: r.id, name, ppm, conf, contract, home, markets, color: r.color });
+  }
+  // Reset directions cache for fresh calculation
+  directionsCache = {};
+  const apiKey = getGoogleApiKey();
+  const useGoogle = apiKey.length > 0;
+  const delayMs = useGoogle ? 50 : 300; // Google has higher rate limits than Nominatim
+
+  // Geocode all addresses
+  for (const rd of researcherData) {
+    document.getElementById('headerInfo').textContent = `Geocodificando endereços de ${rd.name}...`;
+    rd.homeCoord = await geocodeAddress(rd.home);
+    if (rd.homeCoord) await new Promise(res => setTimeout(res, delayMs));
+    rd.marketCoords = [];
+    for (const m of rd.markets) {
+      const coord = await geocodeAddress(m.addr);
+      rd.marketCoords.push(coord);
+      if (coord) await new Promise(res => setTimeout(res, delayMs));
+    }
+  }
+  // ---- DISTANCE-ONLY MODE ----
+  if (!hasPerformanceData) {
+    await generateDistanceResults(researcherData, cidade);
+    updateMapWithCoords(researcherData);
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('resultado').classList.add('active');
+    document.querySelectorAll('.tab')[1].classList.add('active');
+    document.getElementById('headerInfo').textContent = `${cidade} | MODO DISTÂNCIA — sem PPM/Conformidade`;
+    document.querySelectorAll('.btn-primary')[0].textContent = 'CALCULAR ROTAS';
+    document.querySelectorAll('.btn-primary')[0].disabled = false;
+    return;
+  }
+  // ---- FULL MODE ----
+  document.getElementById('headerInfo').textContent = 'Calculando rotas e distâncias...';
+  const data = [];
+  for (const [idx, rd] of researcherData.entries()) {
+    const ppm = rd.ppm || 2.0;
+    const conf = rd.conf || 50;
+    const contract = rd.contract || 8;
+    // Calculate average timePerMarket for route optimization heuristic
+    const avgTimePerMarket = rd.markets.reduce((s, m) => s + m.items / ppm, 0) / rd.markets.length;
+    // Sort markets by deadline (earliest first), then optimize by distance within same deadline
+    const optOrder = optimizeRouteWithDeadlines(rd.homeCoord, rd.marketCoords, rd.markets, avgTimePerMarket, inicioJornada, tempoDeslocamento);
+    const orderedMarkets = optOrder.map(i => rd.markets[i]);
+    const orderedCoords = optOrder.map(i => rd.marketCoords[i]);
+    // Calculate travel times (using Directions API when available)
+    let marketTravelTimes = [];
+    let prevCoord = rd.homeCoord;
+    let totalRealTravel = 0;
+    let travelSource = 'default';
+    for (let i = 0; i < orderedCoords.length; i++) {
+      const mc = orderedCoords[i];
+      const travel = await getTravelInfo(prevCoord, mc);
+      travelSource = travel.source;
+      if (travel.km !== null) {
+        marketTravelTimes.push({ km: travel.km.toFixed(1), mins: travel.mins, source: travel.source, polyline: travel.polyline });
+        totalRealTravel += travel.mins;
+        prevCoord = mc;
+      } else {
+        marketTravelTimes.push({ km: '?', mins: tempoDeslocamento, source: 'default' });
+        totalRealTravel += tempoDeslocamento;
+      }
+    }
+    // Check per-market deadline compliance (using per-market items)
+    let currentTime = inicioJornada;
+    let deadlineMisses = [];
+    let marketTimings = [];
+    orderedMarkets.forEach((m, i) => {
+      const travelMin = marketTravelTimes[i] ? marketTravelTimes[i].mins : tempoDeslocamento;
+      const collectionTime = m.items / ppm;
+      currentTime += travelMin;
+      const arrivalTime = currentTime;
+      currentTime += collectionTime;
+      const finishTime = currentTime;
+      marketTimings.push({ items: m.items, collectionTime, arrivalTime, finishTime });
+      if (finishTime > m.deadlineMin) {
+        deadlineMisses.push({ name: m.name, deadline: m.deadline, finish: minutesToTime(Math.round(finishTime)) });
+      }
+    });
+    const totalCollectionTime = orderedMarkets.reduce((s, m) => s + m.items / ppm, 0);
+    const totalNeeded = totalCollectionTime + totalRealTravel;
+    const contractMinutes = contract * 60;
+    const effectiveTime = contractMinutes * (conf / 100);
+    const latestDeadline = Math.max(...orderedMarkets.map(m => m.deadlineMin));
+    const availableWindow = Math.min(contractMinutes, latestDeadline - inicioJornada);
+    const slack = availableWindow - totalNeeded;
+    const feasible = deadlineMisses.length === 0 && totalNeeded <= availableWindow;
+    // ===== FIX 2: STATUS PRIORITY - RISCO ALTO before APERTADO =====
+    let status, statusClass;
+    if (deadlineMisses.length > 0) { status = 'PRAZO ESTOURADO'; statusClass = 'badge-red'; }
+    else if (!feasible) { status = 'INVIÁVEL'; statusClass = 'badge-red'; }
+    else if (conf < 50) { status = 'RISCO ALTO'; statusClass = 'badge-yellow'; }
+    else if (slack < 30) { status = 'APERTADO'; statusClass = 'badge-yellow'; }
+    else { status = 'OK'; statusClass = 'badge-green'; }
+    data.push({
+      id: rd.id, name: rd.name, ppm, conf, contract, contractMinutes,
+      home: rd.home, color: rd.color, homeCoord: rd.homeCoord,
+      markets: orderedMarkets, marketCoords: orderedCoords, marketTravelTimes, marketTimings,
+      totalCollectionTime, totalTravelTime: totalRealTravel,
+      totalNeeded, effectiveTime, availableWindow, slack, feasible, status, statusClass,
+      deadlineMisses, travelSource
+    });
+  }
+  generateResults(data, inicioJornada, tempoDeslocamento, cidade);
+  generateRecommendation(data, inicioJornada, tempoDeslocamento);
+  updateMapWithCoords(researcherData);
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('resultado').classList.add('active');
+  document.querySelectorAll('.tab')[1].classList.add('active');
+  const providerLabel = data.length > 0 && data[0].travelSource === 'directions' ? 'Google Directions' : (geocodingProvider === 'google' ? 'Google + Haversine' : (geocodingProvider === 'nominatim' ? 'Nominatim + Haversine' : 'Sem geocodificação'));
+  document.getElementById('headerInfo').textContent =
+    `${cidade} | Início ${minutesToTime(inicioJornada)} | ${providerLabel}`;
+  document.querySelectorAll('.btn-primary')[0].textContent = 'CALCULAR ROTAS';
+  document.querySelectorAll('.btn-primary')[0].disabled = false;
+  } catch(err) {
+    console.error('Erro no cálculo:', err);
+    document.getElementById('resultContent').innerHTML = `
+      <div class="reco-box" style="border-color:#ef444440;background:linear-gradient(135deg,#ef444415 0%,#ffffff 100%);">
+        <h3 style="color:#dc2626;">Erro no Cálculo</h3>
+        <p>${err.message}</p>
+        <p style="font-size:11px;color:#94a3b8;margin-top:8px;">Verifique os dados preenchidos e tente novamente. Se o erro persistir, verifique sua conexão com a internet (necessária para geocodificação).</p>
+      </div>`;
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('resultado').classList.add('active');
+    document.querySelectorAll('.btn-primary')[0].textContent = 'CALCULAR ROTAS';
+    document.querySelectorAll('.btn-primary')[0].disabled = false;
+  }
+}
+// ======================== DISTANCE-ONLY RESULTS ========================
+async function generateDistanceResults(researcherData, cidade) {
+  const container = document.getElementById('resultContent');
+  const noGeo = (geocodingAvailable === false);
+  let html = '';
+  if (noGeo) {
+    html += `<div class="reco-box" style="border-color:#ca8a0440;background:linear-gradient(135deg,#ca8a0415 0%,#ffffff 100%);">
+      <h3 style="color:#ca8a04;">Modo Distância (sem geocodificação)</h3>
+      <p>A geocodificação não está disponível (arquivo aberto localmente). Para calcular distâncias reais, hospede o arquivo em um servidor web ou abra via HTTPS.</p>
+      <p style="margin-top:6px;">Mostrando a lista de mercados na ordem informada.</p>
+    </div>`;
+  } else {
+    const srcLabel = geocodingProvider === 'google' ? 'Google Maps' : 'Nominatim';
+    html += `<div class="reco-box" style="border-color:#3b82f640;background:linear-gradient(135deg,#2563eb15 0%,#ffffff 100%);">
+      <h3 style="color:#2563eb;">Modo Distância (${srcLabel})</h3>
+      <p>PPM, Conformidade e/ou Contrato não preenchidos. Mostrando apenas distâncias e ordem ideal de visita aos mercados.</p>
+    </div>`;
+  }
+  for (const rd of researcherData) {
+    const hasAnyCoords = rd.homeCoord || (rd.marketCoords && rd.marketCoords.some(c => c));
+    if (!hasAnyCoords && !noGeo) {
+      html += `<div class="card">
+        <div class="card-header">
+          <span class="card-title" style="color:${rd.color}">${rd.name}</span>
+          <span class="badge badge-yellow">SEM COORDENADAS</span>
+        </div>
+        <p style="font-size:12px;color:#94a3b8;">Endereços não puderam ser geolocalizados. Verifique os endereços informados.</p>
+      </div>`;
+      continue;
+    }
+    // Optimize route: deadline first, then distance
+    const optOrder = optimizeRouteWithDeadlines(rd.homeCoord, rd.marketCoords || [], rd.markets, 0, 0, 15);
+    // Build distance legs using Directions API when available
+    let prevCoord = rd.homeCoord;
+    let prevName = 'Casa';
+    let legs = [];
+    let totalKm = 0;
+    let totalMin = 0;
+    for (const i of optOrder) {
+      const m = rd.markets[i];
+      const mc = rd.marketCoords[i];
+      const travel = await getTravelInfo(prevCoord, mc);
+      if (travel.km !== null) {
+        legs.push({ from: prevName, to: m.name, km: travel.km, mins: travel.mins, toAddr: m.addr, deadline: m.deadline, source: travel.source });
+        totalKm += travel.km;
+        totalMin += travel.mins;
+        prevCoord = mc;
+        prevName = m.name;
+      } else {
+        legs.push({ from: prevName, to: m.name, km: null, mins: null, toAddr: m.addr, deadline: m.deadline, source: 'none' });
+        prevName = m.name;
+      }
+    }
+    html += `<div class="card">
+      <div class="card-header">
+        <span class="card-title" style="color:${rd.color}">${rd.name}</span>
+        <span class="badge ${hasAnyCoords ? 'badge-green' : 'badge-yellow'}">${hasAnyCoords ? 'ROTA OTIMIZADA' : 'LISTA DE MERCADOS'}</span>
+      </div>
+      <div class="section-title">${hasAnyCoords ? 'Ordem recomendada de visita (prazo + proximidade)' : 'Mercados atribuídos'}</div>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:${rd.color};background:${rd.color}30;"></div>
+          <div class="tl-desc" style="font-weight:700;">Casa</div>
+          <div class="tl-dur">${rd.home || 'Endereço não informado'}</div>
+        </div>`;
+    legs.forEach((leg, i) => {
+      html += `
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:${rd.color};background:${rd.color};"></div>
+          <div class="tl-desc" style="font-weight:700;">${i+1}. ${leg.to} <span style="background:#eff6ff;color:#2563eb;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;">Prazo: ${leg.deadline || '17:00'}</span></div>
+          <div class="tl-dur">${leg.toAddr}</div>
+          <div style="margin-top:3px;">
+            ${leg.km !== null
+              ? `<span style="background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">
+                  ${leg.km.toFixed(1)} km — ~${leg.mins} min de ${leg.from}
+                </span>`
+              : `<span style="background:#fefce8;color:#ca8a04;padding:2px 8px;border-radius:10px;font-size:11px;">
+                  Distância não calculada
+                </span>`
+            }
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+    // Total summary
+    if (totalKm > 0) {
+      html += `<div style="margin-top:10px;background:#f8fafc;border-radius:6px;padding:8px 12px;display:flex;gap:16px;">
+        <div><span style="font-size:10px;color:#94a3b8;">DISTÂNCIA TOTAL</span><br><span style="font-size:16px;font-weight:700;color:#2563eb;">${totalKm.toFixed(1)} km</span></div>
+        <div><span style="font-size:10px;color:#94a3b8;">TEMPO ESTIMADO</span><br><span style="font-size:16px;font-weight:700;color:#2563eb;">~${totalMin} min</span></div>
+        <div><span style="font-size:10px;color:#94a3b8;">MERCADOS</span><br><span style="font-size:16px;font-weight:700;color:#334155;">${rd.markets.length}</span></div>
+      </div>`;
+    }
+    // Distance matrix between all markets
+    if (rd.markets.length > 1) {
+      html += `<div class="section-title" style="margin-top:12px;">Matriz de Distâncias entre Mercados</div>`;
+      html += `<table><thead><tr><th></th>`;
+      rd.markets.forEach(m => { html += `<th style="font-size:9px;">${m.name}</th>`; });
+      html += `</tr></thead><tbody>`;
+      rd.markets.forEach((m1, i) => {
+        html += `<tr><td style="font-weight:600;font-size:10px;">${m1.name}</td>`;
+        rd.markets.forEach((m2, j) => {
+          if (i === j) { html += `<td style="color:#334155;">-</td>`; }
+          else {
+            const c1 = rd.marketCoords[i], c2 = rd.marketCoords[j];
+            if (c1 && c2) {
+              const km = haversineKm(c1.lat, c1.lng, c2.lat, c2.lng);
+              const mins = estimateDriveMinutes(km);
+              html += `<td style="font-size:10px;">${km.toFixed(1)}km<br><span style="color:#94a3b8;">~${mins}min</span></td>`;
+            } else {
+              html += `<td style="color:#475569;">?</td>`;
+            }
+          }
+        });
+        html += `</tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+    html += `</div>`;
+  }
+  // Recomendação no modo distância
+  const recoContainer = document.getElementById('recoContent');
+  let recoHtml = `<div class="reco-box">
+    <h3>Dica: Preencha PPM, Conformidade e Contrato</h3>
+    <p>Para obter o diagnóstico completo com viabilidade, cronograma e alertas, preencha os campos de desempenho de cada pesquisador.</p>
+  </div>`;
+  recoHtml += `<div class="section-title">Orientação por pesquisador</div>`;
+  researcherData.forEach(rd => {
+    if (!rd.homeCoord) return;
+    const optOrder = rd.marketCoords.some(c => c) ? optimizeRouteWithDeadlines(rd.homeCoord, rd.marketCoords || [], rd.markets, 0, 0, 15) : [];
+    if (optOrder.length === 0) return;
+    recoHtml += `<div class="card"><div class="card-title" style="color:${rd.color};margin-bottom:6px;">${rd.name}</div>
+      <p style="font-size:12px;color:#475569;line-height:1.8;">Ordem recomendada de visita (prazo + proximidade):<br>`;
+    optOrder.forEach((i, pos) => {
+      const m = rd.markets[i];
+      const mc = rd.marketCoords[i];
+      let distInfo = '';
+      if (pos === 0 && rd.homeCoord && mc) {
+        const km = haversineKm(rd.homeCoord.lat, rd.homeCoord.lng, mc.lat, mc.lng);
+        distInfo = ` (${km.toFixed(1)}km da casa)`;
+      }
+      recoHtml += `<strong style="color:#16a34a;">${pos+1}.</strong> <strong>${m.name}</strong> — Prazo: ${m.deadline}${distInfo}<br>`;
+    });
+    recoHtml += `</p></div>`;
+  });
+  recoContainer.innerHTML = recoHtml;
+  container.innerHTML = html;
+}
+function generateResults(data, inicio, desloc, cidade) {
+  const container = document.getElementById('resultContent');
+  let html = '<div class="section-title">Diagnóstico Individual</div>';
+  data.forEach(r => {
+    let currentTime = inicio;
+    let timelineHtml = '';
+    // Home departure
+    timelineHtml += `
+      <div class="tl-item">
+        <div class="tl-dot" style="border-color:${r.color};background:${r.color}30;"></div>
+        <div class="tl-time">${minutesToTime(currentTime)}</div>
+        <div class="tl-desc">Sai de casa</div>
+      </div>`;
+    // Markets (with real travel times, per-market items and deadlines)
+    r.markets.forEach((m, i) => {
+      const travelMin = (r.marketTravelTimes && r.marketTravelTimes[i]) ? r.marketTravelTimes[i].mins : desloc;
+      const travelKm = (r.marketTravelTimes && r.marketTravelTimes[i]) ? r.marketTravelTimes[i].km : '?';
+      const collectionTime = (r.marketTimings && r.marketTimings[i]) ? r.marketTimings[i].collectionTime : m.items / r.ppm;
+      currentTime += travelMin;
+      const startTime = currentTime;
+      currentTime += collectionTime;
+      const onTime = currentTime <= m.deadlineMin;
+      const deadlineTag = `<span style="background:${onTime?'#16a34a20':'#dc262620'};color:${onTime?'#4ade80':'#f87171'};padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-left:6px;">Prazo: ${m.deadline}${onTime ? ' OK' : ' ESTOURADO'}</span>`;
+      timelineHtml += `
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:${r.color};background:${r.color};"></div>
+          <div class="tl-time">${minutesToTime(startTime)} → ${minutesToTime(Math.round(currentTime))}</div>
+          <div class="tl-desc">${m.name} ${deadlineTag}</div>
+          <div class="tl-dur">${m.items} itens | ${formatDuration(collectionTime)} | ${travelKm}km ~${travelMin}min</div>
+        </div>`;
+    });
+    // End summary
+    const latestDeadline = Math.max(...r.markets.map(m => m.deadlineMin));
+    const allOnTime = !r.deadlineMisses || r.deadlineMisses.length === 0;
+    const endColor = allOnTime ? '#4ade80' : '#f87171';
+    const endStatus = allOnTime ? 'Todos os prazos atendidos' : `${r.deadlineMisses.length} prazo(s) estourado(s)`;
+    timelineHtml += `
+      <div class="tl-item">
+        <div class="tl-dot" style="border-color:${endColor};background:${endColor}30;"></div>
+        <div class="tl-time">${minutesToTime(currentTime)}</div>
+        <div class="tl-desc" style="color:${endColor}">${endStatus}</div>
+      </div>`;
+    // Warnings
+    let warningHtml = '';
+    if (r.deadlineMisses && r.deadlineMisses.length > 0) {
+      warningHtml = `<div class="alert-box" style="margin-top:8px;">
+        <h3>PRAZO(S) ESTOURADO(S)</h3>
+        ${r.deadlineMisses.map(dm => `<p><strong>${dm.name}</strong> — prazo ${dm.deadline}, término previsto ${dm.finish}</p>`).join('')}
+      </div>`;
+    }
+    if (!r.feasible && (!r.deadlineMisses || r.deadlineMisses.length === 0)) {
+      warningHtml += `<div class="alert-box" style="margin-top:8px;">
+        <h3>Situação: IMPOSSÍVEL</h3>
+        <p>${r.name} precisa de <strong>${formatDuration(r.totalNeeded)}</strong> mas tem apenas <strong>${formatDuration(r.availableWindow)}</strong> disponíveis.</p>
+      </div>`;
+    }
+    if (r.conf < 50) {
+      warningHtml += `<div class="warn-box" style="margin-top:8px;">
+        <h3>Conformidade ${r.conf}%</h3>
+        <p>Historicamente trabalha apenas <strong>${formatDuration(r.effectiveTime)}</strong> de ${r.contract}h. Exige supervisão.</p>
+      </div>`;
+    } else if (allOnTime && r.slack >= 0 && r.slack < 30) {
+      warningHtml += `<div class="warn-box" style="margin-top:8px;">
+        <h3>Folga mínima: ${formatDuration(r.slack)}</h3>
+        <p>Qualquer atraso pode comprometer o prazo.</p>
+      </div>`;
+    }
+    // ===== FIX 6: conformidade warning when feasible but totalNeeded > effectiveTime =====
+    if (r.feasible && r.conf >= 50 && r.totalNeeded > r.effectiveTime) {
+      warningHtml += `<div class="warn-box" style="margin-top:8px;">
+        <h3>Atenção: Tempo efetivo vs necessário</h3>
+        <p>Baseado na conformidade de <strong>${r.conf}%</strong>, o tempo efetivo de trabalho é ~<strong>${formatDuration(r.effectiveTime)}</strong>. A rota exige <strong>${formatDuration(r.totalNeeded)}</strong>, o que ultrapassa o histórico. Supervisão recomendada.</p>
+      </div>`;
+    }
+    html += `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title" style="color:${r.color}">${r.name}</span>
+          <span class="badge ${r.statusClass}">${r.status}</span>
+        </div>
+        <div class="stat-row">
+          <div class="stat"><div class="stat-label">Contrato</div><div class="stat-value">${r.contract}h</div></div>
+          <div class="stat"><div class="stat-label">PPM</div><div class="stat-value">${r.ppm.toFixed(2)}</div></div>
+          <div class="stat"><div class="stat-label">Conform.</div><div class="stat-value" style="color:${r.conf>=70?'#4ade80':r.conf>=50?'#fbbf24':'#f87171'}">${r.conf}%</div></div>
+          <div class="stat"><div class="stat-label">Mercados</div><div class="stat-value">${r.markets.length}</div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat"><div class="stat-label">Tempo coleta</div><div class="stat-value">${formatDuration(r.totalCollectionTime)}</div></div>
+          <div class="stat"><div class="stat-label">Desloc.</div><div class="stat-value">${formatDuration(r.totalTravelTime)}</div></div>
+          <div class="stat"><div class="stat-label">Total</div><div class="stat-value" style="color:${r.feasible?'#4ade80':'#f87171'}">${formatDuration(r.totalNeeded)}</div></div>
+          <div class="stat"><div class="stat-label">${r.slack>=0?'Folga':'Excede'}</div><div class="stat-value" style="color:${r.slack>=0?'#4ade80':'#f87171'}">${r.slack>=0?'':'+'}${formatDuration(Math.abs(r.slack))}</div></div>
+        </div>
+        <div class="section-title">Rota (ordenada por prazo + proximidade)</div>
+        <div class="timeline">${timelineHtml}</div>
+        ${warningHtml}
+      </div>`;
+  });
+  // ===== FIX 7: Gantt chart - extend end time =====
+  const allDeadlines = data.flatMap(r => r.markets.map(m => m.deadlineMin));
+  const allEndTimes = data.map(r => inicio + r.totalNeeded);
+  const chartEnd = Math.max(...allDeadlines, ...allEndTimes);
+  const totalMinutes = chartEnd - inicio;
+  html += '<div class="section-title">Cronograma Visual</div>';
+  html += '<div class="gantt-container">';
+  html += `<div class="gantt-header"><span>${minutesToTime(inicio)}</span><span>${minutesToTime(inicio + totalMinutes*0.25)}</span><span>${minutesToTime(inicio + totalMinutes*0.5)}</span><span>${minutesToTime(inicio + totalMinutes*0.75)}</span><span>${minutesToTime(chartEnd)}</span></div>`;
+  data.forEach(r => {
+    let currentMin = 0;
+    html += `<div class="gantt-label" style="color:${r.color}">${r.name} (${r.markets.length} merc.)</div>`;
+    html += '<div class="gantt-track">';
+    r.markets.forEach((m, i) => {
+      const travelMin = (r.marketTravelTimes && r.marketTravelTimes[i]) ? r.marketTravelTimes[i].mins : desloc;
+      const collectionTime = (r.marketTimings && r.marketTimings[i]) ? r.marketTimings[i].collectionTime : m.items / r.ppm;
+      currentMin += travelMin;
+      const left = (currentMin / totalMinutes * 100);
+      const width = (collectionTime / totalMinutes * 100);
+      html += `<div class="gantt-bar" style="left:${left}%;width:${width}%;background:${r.color};" title="${m.name} | ${m.items} itens | Prazo: ${m.deadline}">${m.name} (${m.items})</div>`;
+      // Deadline marker for this market
+      const dlPos = ((m.deadlineMin - inicio) / totalMinutes * 100);
+      html += `<div class="gantt-deadline" style="left:${dlPos}%;" title="Prazo ${m.name}: ${m.deadline}"></div>`;
+      currentMin += collectionTime;
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  // Summary table
+  html += '<div class="section-title">Resumo</div><table><thead><tr><th>Pesquisador</th><th>Mercados</th><th>Tempo Total</th><th>Folga</th><th>Status</th></tr></thead><tbody>';
+  data.forEach(r => {
+    html += `<tr><td style="color:${r.color}">${r.name}</td><td>${r.markets.length}</td><td>${formatDuration(r.totalNeeded)}</td><td style="color:${r.slack>=0?'#4ade80':'#f87171'}">${r.slack>=0?'':'+'}${formatDuration(Math.abs(r.slack))}</td><td><span class="badge ${r.statusClass}">${r.status}</span></td></tr>`;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+function generateRecommendation(data, inicio, desloc) {
+  const container = document.getElementById('recoContent');
+  const infeasible = data.filter(r => !r.feasible);
+  const risky = data.filter(r => r.feasible && r.conf < 50);
+  const tight = data.filter(r => r.feasible && r.conf >= 50 && r.slack < 30);
+  const ok = data.filter(r => r.feasible && r.conf >= 50 && r.slack >= 30);
+  let html = '';
+  if (infeasible.length === 0 && risky.length === 0 && tight.length === 0) {
+    html += `<div class="reco-box"><h3>Todas as rotas estão viáveis!</h3><p>Nenhuma redistribuição necessária. Todos os pesquisadores conseguem cumprir seus mercados dentro do prazo.</p></div>`;
+  } else {
+    // Find researchers with capacity
+    const allItems = data.flatMap(r => r.markets.map(m => m.items));
+    const avgItems = allItems.length > 0 ? allItems.reduce((a,b) => a+b, 0) / allItems.length : 374;
+    const withCapacity = data.filter(r => r.feasible && r.slack > (avgItems / r.ppm + desloc));
+    html += `<div class="section-title">Diagnóstico</div>`;
+    if (infeasible.length > 0) {
+      infeasible.forEach(r => {
+        html += `<div class="alert-box"><h3>${r.name} — INVIÁVEL</h3>
+          <p>Precisa de <strong>${formatDuration(r.totalNeeded)}</strong> para ${r.markets.length} mercados, mas tem apenas <strong>${formatDuration(r.availableWindow)}</strong>.
+          ${r.markets.length > 1 ? `Considere redistribuir ${r.markets.length - 1} mercado(s) para outro pesquisador com capacidade.` : 'Mesmo com 1 mercado, o tempo não é suficiente. Considere substituição.'}</p>
+        </div>`;
+      });
+    }
+    if (risky.length > 0) {
+      risky.forEach(r => {
+        html += `<div class="warn-box"><h3>${r.name} — Conformidade ${r.conf}%</h3>
+          <p>A rota é viável no papel (${formatDuration(r.totalNeeded)} necessárias, ${formatDuration(r.availableWindow)} disponíveis), mas historicamente trabalha apenas <strong>${formatDuration(r.effectiveTime)}</strong>. Supervisão intensa recomendada.</p>
+        </div>`;
+      });
+    }
+    if (tight.length > 0) {
+      tight.forEach(r => {
+        html += `<div class="warn-box"><h3>${r.name} — Folga mínima (${formatDuration(r.slack)})</h3>
+          <p>A rota funciona, mas qualquer imprevisto compromete o prazo. Monitorar de perto.</p>
+        </div>`;
+      });
+    }
+    if (withCapacity.length > 0) {
+      html += `<div class="section-title">Pesquisadores com capacidade extra</div>`;
+      withCapacity.forEach(r => {
+        const extraMarkets = Math.floor(r.slack / (avgItems / r.ppm + desloc));
+        html += `<div class="reco-box"><h3>${r.name} — Pode absorver mais ${extraMarkets} mercado(s)</h3>
+          <p>Folga atual: ${formatDuration(r.slack)}. Tempo por mercado extra (~${Math.round(avgItems)} itens): ~${formatDuration(avgItems / r.ppm + desloc)}. Capacidade para mais ${extraMarkets} mercado(s).</p>
+        </div>`;
+      });
+    }
+  }
+  html += `<div class="section-title">Ações Recomendadas</div>
+    <div class="card"><div style="font-size:12px;color:#475569;line-height:1.8;">`;
+  let actionNum = 1;
+  infeasible.forEach(r => {
+    if (r.markets.length > 1) {
+      const avgItemsR = r.markets.reduce((s,m) => s + m.items, 0) / r.markets.length;
+      html += `<strong style="color:#16a34a;">${actionNum++}.</strong> <strong>Redistribuição de mercados de ${r.name}</strong> — tem ${r.markets.length} mercados mas só dá conta de ${Math.floor(r.availableWindow / (avgItemsR/r.ppm + desloc))} no tempo disponível<br>`;
+    } else {
+      html += `<strong style="color:#dc2626;">${actionNum++}.</strong> <strong>Avaliar substituição de ${r.name}</strong> — não consegue completar nem 1 mercado no tempo<br>`;
+    }
+  });
+  risky.forEach(r => {
+    html += `<strong style="color:#ca8a04;">${actionNum++}.</strong> <strong>Supervisionar ${r.name}</strong> — conformidade de ${r.conf}% é crítica<br>`;
+  });
+  if (ok.length > 0) {
+    html += `<strong style="color:#16a34a;">${actionNum++}.</strong> <strong>Manter rotas de:</strong> ${ok.map(r=>r.name).join(', ')}<br>`;
+  }
+  html += `</div></div>`;
+  container.innerHTML = html;
+}
+// ======================== MAP ========================
+function updateMapWithCoords(researcherData) {
+  // Clear existing
+  markers.forEach(m => map.removeLayer(m));
+  routeLines.forEach(l => map.removeLayer(l));
+  markers = [];
+  routeLines = [];
+  const allCoords = [];
+  researcherData.forEach((rd) => {
+    const routeCoords = [];
+    // Home marker (use real geocoded coords)
+    if (rd.homeCoord) {
+      const hLat = rd.homeCoord.lat;
+      const hLng = rd.homeCoord.lng;
+      const homeMarker = L.marker([hLat, hLng], {
+        icon: createIcon('H', rd.color)
+      }).addTo(map).bindPopup(`<b>${rd.name}</b><br>Casa: ${rd.home || rd.homeCoord.display || ''}`);
+      markers.push(homeMarker);
+      allCoords.push([hLat, hLng]);
+      routeCoords.push([hLat, hLng]);
+    }
+    // ===== FIX 1: Map uses correct algorithm =====
+    // Determine optimized order using deadline-aware algorithm (same as calculation)
+    const hasCoords = rd.homeCoord && rd.marketCoords && rd.marketCoords.some(c => c);
+    const order = hasCoords
+      ? optimizeRouteWithDeadlines(rd.homeCoord, rd.marketCoords || [], rd.markets, 0, 0, 15)
+      : rd.markets.map((_, i) => i);
+    // Market markers in optimized order
+    order.forEach((origIdx, seqIdx) => {
+      const mc = rd.marketCoords ? rd.marketCoords[origIdx] : null;
+      const m = rd.markets[origIdx];
+      if (mc) {
+        const mMarker = L.marker([mc.lat, mc.lng], {
+          icon: createIcon(`${seqIdx + 1}`, rd.color)
+        }).addTo(map).bindPopup(`<b>${seqIdx + 1}º — ${m.name}</b><br>${m.addr || mc.display || ''}<br><i>Prazo: ${m.deadline}</i>`);
+        markers.push(mMarker);
+        allCoords.push([mc.lat, mc.lng]);
+        routeCoords.push([mc.lat, mc.lng]);
+      }
+    });
+    // Route line connecting home → markets in order
+    if (routeCoords.length > 1) {
+      const line = L.polyline(routeCoords, {
+        color: rd.color, weight: 3, opacity: 0.7, dashArray: '8,6', smoothFactor: 1.5
+      }).addTo(map);
+      routeLines.push(line);
+    }
+  });
+  if (allCoords.length > 0) {
+    map.fitBounds(allCoords, { padding: [40, 40] });
+  }
+}
+function createIcon(letter, color) {
+  return L.divIcon({
+    html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;color:white;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);">${letter}</div>`,
+    iconSize: [28, 28], iconAnchor: [14, 14], className: ''
+  });
+}
+// ======================== SAMPLE DATA ========================
+function loadSampleData() {
+  document.getElementById('cidade').value = 'Feira de Santana/BA';
+  document.getElementById('inicioJornada').value = '08:00';
+  researchers = [];
+  researcherIdCounter = 0;
+  // Leandra
+  addResearcher();
+  addMarket(0);
+  // Geisa
+  addResearcher();
+  // Israel
+  addResearcher();
+  addMarket(2);
+  // Wait for DOM update
+  setTimeout(() => {
+    const setVal = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+    // Leandra — 2 mercados com prazos diferentes
+    setVal('rName_0', 'Leandra Marques Anselmo');
+    setVal('rPPM_0', '2.62');
+    setVal('rConf_0', '41.43');
+    setVal('rContract_0', '8');
+    setVal('rHome_0', 'Rua da Concordia 437, Queimadinha - Feira de Santana/BA');
+    setVal('mName_0_0', 'Mix Mateus');
+    setVal('mItems_0_0', '374');
+    setVal('mAddr_0_0', 'Av. Eduardo Fróes da Mota, 2221 - Caseb, Feira de Santana - BA');
+    setVal('mDeadline_0_0', '14:00');
+    setVal('mName_0_1', 'Economart');
+    setVal('mItems_0_1', '374');
+    setVal('mAddr_0_1', 'Av. Noide Cerqueira - Lagoa Salgada, Feira de Santana - BA');
+    setVal('mDeadline_0_1', '17:00');
+    // Geisa — 1 mercado
+    setVal('rName_1', 'Geisa Ciane M. O. C. Santos');
+    setVal('rPPM_1', '1.78');
+    setVal('rConf_1', '92.32');
+    setVal('rContract_1', '4');
+    setVal('rHome_1', 'Rua projetada, Loteamento Parque Progresso 31 - Feira de Santana/BA');
+    setVal('mName_1_0', 'Atacadão');
+    setVal('mItems_1_0', '280');
+    setVal('mAddr_1_0', 'Av. Eduardo Fróes da Mota, 5500 - Morada das Árvores, Feira de Santana - BA');
+    setVal('mDeadline_1_0', '12:00');
+    // Israel — 2 mercados com prazos diferentes
+    setVal('rName_2', 'Israel Henrique Ribeiro Rios');
+    setVal('rPPM_2', '2.39');
+    setVal('rConf_2', '40.41');
+    setVal('rContract_2', '4');
+    setVal('rHome_2', 'Av. Rubens Carvalho, 100 - Pedra do Descanso, Feira de Santana - BA');
+    setVal('mName_2_0', 'Assaí');
+    setVal('mItems_2_0', '374');
+    setVal('mAddr_2_0', 'Av. Eduardo Fróes da Mota, S/N - Sobradinho, Feira de Santana - BA');
+    setVal('mDeadline_2_0', '14:00');
+    setVal('mName_2_1', 'Minerão');
+    setVal('mItems_2_1', '350');
+    setVal('mAddr_2_1', 'Av. Pres. Dutra - Capuchinhos, Feira de Santana - BA');
+    setVal('mDeadline_2_1', '17:00');
+  }, 100);
+}
+// Initialize with one researcher
+addResearcher();
+</script>
+</body>
+</html>
