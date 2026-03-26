@@ -381,7 +381,7 @@ function renderResearchers() {
 }
 // ======================== GEOCODING & DISTANCE ========================
 let geocodingAvailable = null; // null = not tested yet
-let geocodingProvider = null; // 'google' or 'nominatim'
+let geocodingProvider = null; // 'google'
 // Cache for Directions API results to avoid duplicate requests
 let directionsCache = {};
 
@@ -412,25 +412,13 @@ function geocodeWithGoogle(address) {
   });
 }
 
-// ---- NOMINATIM GEOCODING (fallback) ----
-async function geocodeWithNominatim(address) {
-  const q = encodeURIComponent(address + ', Brasil');
-  const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`);
-  const data = await resp.json();
-  if (data && data.length > 0) {
-    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), display: data[0].display_name };
-  }
-  return null;
-}
-
-// ---- UNIFIED GEOCODING (Google → Nominatim → null) ----
+// ---- UNIFIED GEOCODING (Google Maps JS only) ----
 async function geocodeAddress(address) {
   if (!address || address.trim() === '') return null;
   if (geocodingAvailable === false) return null;
 
   const apiKey = getGoogleApiKey();
 
-  // Try Google first if API key is provided and Google Maps JS is loaded
   if (apiKey && window.google && window.google.maps) {
     try {
       const result = await geocodeWithGoogle(address);
@@ -439,22 +427,15 @@ async function geocodeAddress(address) {
       return result;
     } catch(e) {
       console.warn('Google Geocoding falhou:', e.message);
-      // Fall through to Nominatim
+      if (geocodingAvailable === null) {
+        geocodingAvailable = false;
+        updateApiStatus('Google Geocoding indisponível', '#f87171');
+      }
     }
-  }
-
-  // Fallback: Nominatim
-  try {
-    const result = await geocodeWithNominatim(address);
-    geocodingAvailable = true;
-    geocodingProvider = 'nominatim';
-    if (!apiKey) updateApiStatus('Usando Nominatim (sem API key)', '#fbbf24');
-    return result;
-  } catch(e) {
-    console.warn('Geocoding indisponível:', e.message);
+  } else {
     if (geocodingAvailable === null) {
       geocodingAvailable = false;
-      updateApiStatus('Geocodificação indisponível (abra via HTTPS)', '#f87171');
+      updateApiStatus('Google Maps não carregou (verifique a API key)', '#f87171');
     }
   }
   return null;
@@ -496,13 +477,12 @@ function getDistanceMatrix(origin, destination) {
   });
 }
 
-// ---- GET TRAVEL INFO (Google Distance Matrix → Haversine fallback) ----
+// ---- GET TRAVEL INFO (Google Distance Matrix) ----
 async function getTravelInfo(origin, destination) {
   if (!origin || !destination) return { km: null, mins: 15, source: 'default' };
 
   const apiKey = getGoogleApiKey();
 
-  // Try Google Distance Matrix first (rotas reais pelas ruas)
   if (apiKey && window.google && window.google.maps) {
     const dm = await getDistanceMatrix(origin, destination);
     if (dm) {
@@ -516,10 +496,8 @@ async function getTravelInfo(origin, destination) {
     }
   }
 
-  // Fallback: Haversine (linha reta)
-  const km = haversineKm(origin.lat, origin.lng, destination.lat, destination.lng);
-  const mins = estimateDriveMinutes(km);
-  return { km, mins, source: 'haversine' };
+  // Sem Google Distance Matrix, retorna tempo padrão
+  return { km: null, mins: 15, source: 'default' };
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -677,7 +655,7 @@ async function calculateRoutes() {
   directionsCache = {};
   const apiKey = getGoogleApiKey();
   const useGoogle = apiKey.length > 0;
-  const delayMs = useGoogle ? 50 : 300; // Google has higher rate limits than Nominatim
+  const delayMs = 50; // Rate limit entre chamadas de geocodificação
 
   // Geocode all addresses
   for (const rd of researcherData) {
@@ -782,7 +760,7 @@ async function calculateRoutes() {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('resultado').classList.add('active');
   document.querySelectorAll('.tab')[1].classList.add('active');
-  const providerLabel = data.length > 0 && data[0].travelSource === 'google' ? 'Google Maps (rotas reais)' : (geocodingProvider === 'google' ? 'Google Geocoding + Haversine' : (geocodingProvider === 'nominatim' ? 'Nominatim + Haversine' : 'Sem geocodificação'));
+  const providerLabel = data.length > 0 && data[0].travelSource === 'google' ? 'Google Maps (rotas reais)' : (geocodingProvider === 'google' ? 'Google Maps' : 'Sem geocodificação');
   document.getElementById('headerInfo').textContent =
     `${cidade} | Início ${minutesToTime(inicioJornada)} | ${providerLabel}`;
   document.querySelectorAll('.btn-primary')[0].textContent = 'CALCULAR ROTAS';
@@ -813,7 +791,7 @@ async function generateDistanceResults(researcherData, cidade) {
       <p style="margin-top:6px;">Mostrando a lista de mercados na ordem informada.</p>
     </div>`;
   } else {
-    const srcLabel = geocodingProvider === 'google' ? 'Google Maps' : 'Nominatim';
+    const srcLabel = 'Google Maps';
     html += `<div class="reco-box" style="border-color:#3b82f640;background:linear-gradient(135deg,#2563eb15 0%,#ffffff 100%);">
       <h3 style="color:#2563eb;">Modo Distância (${srcLabel})</h3>
       <p>PPM, Conformidade e/ou Contrato não preenchidos. Mostrando apenas distâncias e ordem ideal de visita aos mercados.</p>
@@ -899,23 +877,27 @@ async function generateDistanceResults(researcherData, cidade) {
       html += `<table><thead><tr><th></th>`;
       rd.markets.forEach(m => { html += `<th style="font-size:9px;">${m.name}</th>`; });
       html += `</tr></thead><tbody>`;
-      rd.markets.forEach((m1, i) => {
+      for (let i = 0; i < rd.markets.length; i++) {
+        const m1 = rd.markets[i];
         html += `<tr><td style="font-weight:600;font-size:10px;">${m1.name}</td>`;
-        rd.markets.forEach((m2, j) => {
+        for (let j = 0; j < rd.markets.length; j++) {
           if (i === j) { html += `<td style="color:#334155;">-</td>`; }
           else {
             const c1 = rd.marketCoords[i], c2 = rd.marketCoords[j];
             if (c1 && c2) {
-              const km = haversineKm(c1.lat, c1.lng, c2.lat, c2.lng);
-              const mins = estimateDriveMinutes(km);
-              html += `<td style="font-size:10px;">${km.toFixed(1)}km<br><span style="color:#94a3b8;">~${mins}min</span></td>`;
+              const dm = await getDistanceMatrix(c1, c2);
+              if (dm) {
+                html += `<td style="font-size:10px;">${dm.distanceKm.toFixed(1)}km<br><span style="color:#94a3b8;">~${Math.round(dm.durationMin)}min</span></td>`;
+              } else {
+                html += `<td style="color:#475569;">?</td>`;
+              }
             } else {
               html += `<td style="color:#475569;">?</td>`;
             }
           }
-        });
+        }
         html += `</tr>`;
-      });
+      }
       html += `</tbody></table>`;
     }
     html += `</div>`;
@@ -927,24 +909,27 @@ async function generateDistanceResults(researcherData, cidade) {
     <p>Para obter o diagnóstico completo com viabilidade, cronograma e alertas, preencha os campos de desempenho de cada pesquisador.</p>
   </div>`;
   recoHtml += `<div class="section-title">Orientação por pesquisador</div>`;
-  researcherData.forEach(rd => {
-    if (!rd.homeCoord) return;
+  for (const rd of researcherData) {
+    if (!rd.homeCoord) continue;
     const optOrder = rd.marketCoords.some(c => c) ? optimizeRouteWithDeadlines(rd.homeCoord, rd.marketCoords || [], rd.markets, 0, 0, 15) : [];
-    if (optOrder.length === 0) return;
+    if (optOrder.length === 0) continue;
     recoHtml += `<div class="card"><div class="card-title" style="color:${rd.color};margin-bottom:6px;">${rd.name}</div>
       <p style="font-size:12px;color:#475569;line-height:1.8;">Ordem recomendada de visita (prazo + proximidade):<br>`;
-    optOrder.forEach((i, pos) => {
+    for (let pos = 0; pos < optOrder.length; pos++) {
+      const i = optOrder[pos];
       const m = rd.markets[i];
       const mc = rd.marketCoords[i];
       let distInfo = '';
       if (pos === 0 && rd.homeCoord && mc) {
-        const km = haversineKm(rd.homeCoord.lat, rd.homeCoord.lng, mc.lat, mc.lng);
-        distInfo = ` (${km.toFixed(1)}km da casa)`;
+        const dm = await getDistanceMatrix(rd.homeCoord, mc);
+        if (dm) {
+          distInfo = ` (${dm.distanceKm.toFixed(1)}km da casa)`;
+        }
       }
       recoHtml += `<strong style="color:#16a34a;">${pos+1}.</strong> <strong>${m.name}</strong> — Prazo: ${m.deadline}${distInfo}<br>`;
-    });
+    }
     recoHtml += `</p></div>`;
-  });
+  }
   recoContainer.innerHTML = recoHtml;
   container.innerHTML = html;
 }
