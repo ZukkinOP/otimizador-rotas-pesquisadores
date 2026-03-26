@@ -6,6 +6,7 @@
 <title>Otimizador de Rotas</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAnO5hhAbWl5nu5tQoTV4TL2n1CGzrHgTs&libraries=geometry" async defer></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f1f5f9; color: #334155; }
@@ -229,7 +230,7 @@
           </div>
         </div>
         <!-- API key pode ser configurada via JS: document.getElementById('googleApiKey').value = 'SUA_KEY' -->
-        <input type="hidden" id="googleApiKey" value="">
+        <input type="hidden" id="googleApiKey" value="AIzaSyAnO5hhAbWl5nu5tQoTV4TL2n1CGzrHgTs">
         <div id="apiStatus" style="display:none;"></div>
       </div>
       <div class="form-section">
@@ -458,60 +459,63 @@ async function geocodeAddress(address) {
   return null;
 }
 
-// ---- GOOGLE DIRECTIONS API ----
-async function getDirections(origin, destination, apiKey) {
-  if (!apiKey || !origin || !destination) return null;
-  // Check cache
-  const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}`;
-  if (directionsCache[cacheKey]) return directionsCache[cacheKey];
-
-  try {
-    const resp = await fetch(
-      `https://maps.googleapis.com/maps/api/directions/json?` +
-      `origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}` +
-      `&mode=driving&language=pt-BR&key=${apiKey}`
-    );
-    const data = await resp.json();
-    if (data.status === 'OK' && data.routes && data.routes.length > 0) {
-      const leg = data.routes[0].legs[0];
-      const result = {
-        distanceKm: leg.distance.value / 1000,
-        durationMin: Math.round(leg.duration.value / 60),
-        distanceText: leg.distance.text,
-        durationText: leg.duration.text,
-        polyline: data.routes[0].overview_polyline?.points || null
-      };
-      directionsCache[cacheKey] = result;
-      return result;
+// ---- GOOGLE DISTANCE MATRIX (client-side, funciona no navegador) ----
+function getDistanceMatrix(origin, destination) {
+  return new Promise((resolve) => {
+    if (!window.google || !window.google.maps) { resolve(null); return; }
+    const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}`;
+    if (directionsCache[cacheKey]) { resolve(directionsCache[cacheKey]); return; }
+    try {
+      const service = new google.maps.DistanceMatrixService();
+      service.getDistanceMatrix({
+        origins: [new google.maps.LatLng(origin.lat, origin.lng)],
+        destinations: [new google.maps.LatLng(destination.lat, destination.lng)],
+        travelMode: google.maps.TravelMode.DRIVING,
+        unitSystem: google.maps.UnitSystem.METRIC
+      }, (response, status) => {
+        if (status === 'OK' && response.rows[0]?.elements[0]?.status === 'OK') {
+          const el = response.rows[0].elements[0];
+          const result = {
+            distanceKm: el.distance.value / 1000,
+            durationMin: Math.round(el.duration.value / 60),
+            distanceText: el.distance.text,
+            durationText: el.duration.text
+          };
+          directionsCache[cacheKey] = result;
+          resolve(result);
+        } else {
+          console.warn('Distance Matrix status:', status, response?.rows?.[0]?.elements?.[0]?.status);
+          resolve(null);
+        }
+      });
+    } catch(e) {
+      console.warn('Distance Matrix falhou:', e.message);
+      resolve(null);
     }
-  } catch(e) {
-    console.warn('Directions API falhou:', e.message);
-  }
-  return null;
+  });
 }
 
-// ---- GET TRAVEL INFO (Directions API → Haversine fallback) ----
+// ---- GET TRAVEL INFO (Google Distance Matrix → Haversine fallback) ----
 async function getTravelInfo(origin, destination) {
   if (!origin || !destination) return { km: null, mins: 15, source: 'default' };
 
   const apiKey = getGoogleApiKey();
 
-  // Try Directions API first
-  if (apiKey) {
-    const dir = await getDirections(origin, destination, apiKey);
-    if (dir) {
+  // Try Google Distance Matrix first (rotas reais pelas ruas)
+  if (apiKey && window.google && window.google.maps) {
+    const dm = await getDistanceMatrix(origin, destination);
+    if (dm) {
       return {
-        km: dir.distanceKm,
-        mins: dir.durationMin,
-        source: 'directions',
-        polyline: dir.polyline,
-        distanceText: dir.distanceText,
-        durationText: dir.durationText
+        km: dm.distanceKm,
+        mins: dm.durationMin,
+        source: 'google',
+        distanceText: dm.distanceText,
+        durationText: dm.durationText
       };
     }
   }
 
-  // Fallback: Haversine
+  // Fallback: Haversine (linha reta)
   const km = haversineKm(origin.lat, origin.lng, destination.lat, destination.lng);
   const mins = estimateDriveMinutes(km);
   return { km, mins, source: 'haversine' };
@@ -777,7 +781,7 @@ async function calculateRoutes() {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('resultado').classList.add('active');
   document.querySelectorAll('.tab')[1].classList.add('active');
-  const providerLabel = data.length > 0 && data[0].travelSource === 'directions' ? 'Google Directions' : (geocodingProvider === 'google' ? 'Google + Haversine' : (geocodingProvider === 'nominatim' ? 'Nominatim + Haversine' : 'Sem geocodificação'));
+  const providerLabel = data.length > 0 && data[0].travelSource === 'google' ? 'Google Maps (rotas reais)' : (geocodingProvider === 'google' ? 'Google Geocoding + Haversine' : (geocodingProvider === 'nominatim' ? 'Nominatim + Haversine' : 'Sem geocodificação'));
   document.getElementById('headerInfo').textContent =
     `${cidade} | Início ${minutesToTime(inicioJornada)} | ${providerLabel}`;
   document.querySelectorAll('.btn-primary')[0].textContent = 'CALCULAR ROTAS';
