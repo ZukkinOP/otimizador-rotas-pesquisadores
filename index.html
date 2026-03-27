@@ -6,11 +6,6 @@
 <title>Otimizador de Rotas</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script>
-  var googleMapsReady = false;
-  function initGoogleMaps() { googleMapsReady = true; console.log('Google Maps JS API carregada com sucesso'); }
-</script>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAnO5hhAbWl5nu5tQoTV4TL2n1CGzrHgTs&libraries=geometry&callback=initGoogleMaps" async defer></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f1f5f9; color: #334155; }
@@ -234,7 +229,7 @@
           </div>
         </div>
         <!-- API key pode ser configurada via JS: document.getElementById('googleApiKey').value = 'SUA_KEY' -->
-        <input type="hidden" id="googleApiKey" value="AIzaSyAnO5hhAbWl5nu5tQoTV4TL2n1CGzrHgTs">
+        <input type="hidden" id="googleApiKey" value="">
         <div id="apiStatus" style="display:none;"></div>
       </div>
       <div class="form-section">
@@ -385,7 +380,7 @@ function renderResearchers() {
 }
 // ======================== GEOCODING & DISTANCE ========================
 let geocodingAvailable = null; // null = not tested yet
-let geocodingProvider = null; // 'google'
+let geocodingProvider = null; // 'google' or 'nominatim'
 // Cache for Directions API results to avoid duplicate requests
 let directionsCache = {};
 
@@ -399,127 +394,127 @@ function updateApiStatus(text, color) {
 }
 
 // ---- GOOGLE GEOCODING ----
-function geocodeWithGoogle(address) {
-  return new Promise((resolve, reject) => {
-    if (!window.google || !window.google.maps) { reject(new Error('Google Maps não carregou')); return; }
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ address: address, region: 'br' }, (results, status) => {
-      if (status === 'OK' && results && results.length > 0) {
-        const loc = results[0].geometry.location;
-        resolve({ lat: loc.lat(), lng: loc.lng(), display: results[0].formatted_address });
-      } else if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
-        reject(new Error('Google Geocoder: ' + status));
-      } else {
-        resolve(null);
-      }
-    });
-  });
+async function geocodeWithGoogle(address, apiKey) {
+  const q = encodeURIComponent(address);
+  const resp = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${q}&key=${apiKey}&language=pt-BR&region=br`);
+  const data = await resp.json();
+  if (data.status === 'OK' && data.results && data.results.length > 0) {
+    const loc = data.results[0].geometry.location;
+    return { lat: loc.lat, lng: loc.lng, display: data.results[0].formatted_address };
+  }
+  if (data.status === 'REQUEST_DENIED' || data.status === 'INVALID_REQUEST') {
+    throw new Error(`Google API: ${data.error_message || data.status}`);
+  }
+  return null;
 }
 
-// ---- WAIT FOR GOOGLE MAPS TO LOAD ----
-function waitForGoogleMaps(timeoutMs = 10000) {
-  return new Promise((resolve) => {
-    if (window.google && window.google.maps) { resolve(true); return; }
-    const start = Date.now();
-    const check = setInterval(() => {
-      if (window.google && window.google.maps) {
-        clearInterval(check);
-        resolve(true);
-      } else if (Date.now() - start > timeoutMs) {
-        clearInterval(check);
-        resolve(false);
-      }
-    }, 200);
-  });
+// ---- NOMINATIM GEOCODING (fallback) ----
+async function geocodeWithNominatim(address) {
+  const q = encodeURIComponent(address + ', Brasil');
+  const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`);
+  const data = await resp.json();
+  if (data && data.length > 0) {
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), display: data[0].display_name };
+  }
+  return null;
 }
 
-// ---- UNIFIED GEOCODING (Google Maps JS only) ----
+// ---- UNIFIED GEOCODING (Google → Nominatim → null) ----
 async function geocodeAddress(address) {
   if (!address || address.trim() === '') return null;
+  if (geocodingAvailable === false) return null;
 
   const apiKey = getGoogleApiKey();
-  if (!apiKey) {
-    updateApiStatus('API key do Google não configurada', '#f87171');
-    return null;
-  }
 
-  // Aguarda Google Maps carregar (até 10s)
-  if (!window.google || !window.google.maps) {
-    updateApiStatus('Aguardando Google Maps carregar...', '#fbbf24');
-    const loaded = await waitForGoogleMaps(10000);
-    if (!loaded) {
-      updateApiStatus('Google Maps não carregou (verifique a API key e conexão)', '#f87171');
-      return null;
+  // Try Google first if API key is provided
+  if (apiKey) {
+    try {
+      const result = await geocodeWithGoogle(address, apiKey);
+      geocodingAvailable = true;
+      geocodingProvider = 'google';
+      updateApiStatus('Google Maps API ativa', '#4ade80');
+      return result;
+    } catch(e) {
+      console.warn('Google Geocoding falhou:', e.message);
+      updateApiStatus('Google API erro: ' + e.message, '#f87171');
+      // Fall through to Nominatim
     }
   }
 
+  // Fallback: Nominatim
   try {
-    const result = await geocodeWithGoogle(address);
+    const result = await geocodeWithNominatim(address);
     geocodingAvailable = true;
-    geocodingProvider = 'google';
+    geocodingProvider = 'nominatim';
+    if (!apiKey) updateApiStatus('Usando Nominatim (sem API key)', '#fbbf24');
     return result;
   } catch(e) {
-    console.warn('Google Geocoding falhou:', e.message);
-    updateApiStatus('Google Geocoding erro: ' + e.message, '#f87171');
-    return null;
-  }
-}
-
-// ---- GOOGLE DISTANCE MATRIX (client-side, funciona no navegador) ----
-function getDistanceMatrix(origin, destination) {
-  return new Promise((resolve) => {
-    if (!window.google || !window.google.maps) { resolve(null); return; }
-    const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}`;
-    if (directionsCache[cacheKey]) { resolve(directionsCache[cacheKey]); return; }
-    try {
-      const service = new google.maps.DistanceMatrixService();
-      service.getDistanceMatrix({
-        origins: [new google.maps.LatLng(origin.lat, origin.lng)],
-        destinations: [new google.maps.LatLng(destination.lat, destination.lng)],
-        travelMode: google.maps.TravelMode.DRIVING,
-        unitSystem: google.maps.UnitSystem.METRIC
-      }, (response, status) => {
-        if (status === 'OK' && response.rows[0]?.elements[0]?.status === 'OK') {
-          const el = response.rows[0].elements[0];
-          const result = {
-            distanceKm: el.distance.value / 1000,
-            durationMin: Math.round(el.duration.value / 60),
-            distanceText: el.distance.text,
-            durationText: el.duration.text
-          };
-          directionsCache[cacheKey] = result;
-          resolve(result);
-        } else {
-          console.warn('Distance Matrix status:', status, response?.rows?.[0]?.elements?.[0]?.status);
-          resolve(null);
-        }
-      });
-    } catch(e) {
-      console.warn('Distance Matrix falhou:', e.message);
-      resolve(null);
+    console.warn('Geocoding indisponível:', e.message);
+    if (geocodingAvailable === null) {
+      geocodingAvailable = false;
+      updateApiStatus('Geocodificação indisponível (abra via HTTPS)', '#f87171');
     }
-  });
+  }
+  return null;
 }
 
-// ---- GET TRAVEL INFO (Google Distance Matrix) ----
+// ---- GOOGLE DIRECTIONS API ----
+async function getDirections(origin, destination, apiKey) {
+  if (!apiKey || !origin || !destination) return null;
+  // Check cache
+  const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}`;
+  if (directionsCache[cacheKey]) return directionsCache[cacheKey];
+
+  try {
+    const resp = await fetch(
+      `https://maps.googleapis.com/maps/api/directions/json?` +
+      `origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}` +
+      `&mode=driving&language=pt-BR&key=${apiKey}`
+    );
+    const data = await resp.json();
+    if (data.status === 'OK' && data.routes && data.routes.length > 0) {
+      const leg = data.routes[0].legs[0];
+      const result = {
+        distanceKm: leg.distance.value / 1000,
+        durationMin: Math.round(leg.duration.value / 60),
+        distanceText: leg.distance.text,
+        durationText: leg.duration.text,
+        polyline: data.routes[0].overview_polyline?.points || null
+      };
+      directionsCache[cacheKey] = result;
+      return result;
+    }
+  } catch(e) {
+    console.warn('Directions API falhou:', e.message);
+  }
+  return null;
+}
+
+// ---- GET TRAVEL INFO (Directions API → Haversine fallback) ----
 async function getTravelInfo(origin, destination) {
   if (!origin || !destination) return { km: null, mins: 15, source: 'default' };
 
-  if (window.google && window.google.maps) {
-    const dm = await getDistanceMatrix(origin, destination);
-    if (dm) {
+  const apiKey = getGoogleApiKey();
+
+  // Try Directions API first
+  if (apiKey) {
+    const dir = await getDirections(origin, destination, apiKey);
+    if (dir) {
       return {
-        km: dm.distanceKm,
-        mins: dm.durationMin,
-        source: 'google',
-        distanceText: dm.distanceText,
-        durationText: dm.durationText
+        km: dir.distanceKm,
+        mins: dir.durationMin,
+        source: 'directions',
+        polyline: dir.polyline,
+        distanceText: dir.distanceText,
+        durationText: dir.durationText
       };
     }
   }
 
-  // Sem Google Distance Matrix, retorna tempo padrão
-  return { km: null, mins: 15, source: 'default' };
+  // Fallback: Haversine
+  const km = haversineKm(origin.lat, origin.lng, destination.lat, destination.lng);
+  const mins = estimateDriveMinutes(km);
+  return { km, mins, source: 'haversine' };
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -675,9 +670,9 @@ async function calculateRoutes() {
   }
   // Reset directions cache for fresh calculation
   directionsCache = {};
-  geocodingAvailable = null;
-  geocodingProvider = null;
-  const delayMs = 50; // Rate limit entre chamadas de geocodificação
+  const apiKey = getGoogleApiKey();
+  const useGoogle = apiKey.length > 0;
+  const delayMs = useGoogle ? 50 : 300; // Google has higher rate limits than Nominatim
 
   // Geocode all addresses
   for (const rd of researcherData) {
@@ -782,7 +777,7 @@ async function calculateRoutes() {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('resultado').classList.add('active');
   document.querySelectorAll('.tab')[1].classList.add('active');
-  const providerLabel = data.length > 0 && data[0].travelSource === 'google' ? 'Google Maps (rotas reais)' : (geocodingProvider === 'google' ? 'Google Maps' : 'Sem geocodificação');
+  const providerLabel = data.length > 0 && data[0].travelSource === 'directions' ? 'Google Directions' : (geocodingProvider === 'google' ? 'Google + Haversine' : (geocodingProvider === 'nominatim' ? 'Nominatim + Haversine' : 'Sem geocodificação'));
   document.getElementById('headerInfo').textContent =
     `${cidade} | Início ${minutesToTime(inicioJornada)} | ${providerLabel}`;
   document.querySelectorAll('.btn-primary')[0].textContent = 'CALCULAR ROTAS';
@@ -813,7 +808,7 @@ async function generateDistanceResults(researcherData, cidade) {
       <p style="margin-top:6px;">Mostrando a lista de mercados na ordem informada.</p>
     </div>`;
   } else {
-    const srcLabel = 'Google Maps';
+    const srcLabel = geocodingProvider === 'google' ? 'Google Maps' : 'Nominatim';
     html += `<div class="reco-box" style="border-color:#3b82f640;background:linear-gradient(135deg,#2563eb15 0%,#ffffff 100%);">
       <h3 style="color:#2563eb;">Modo Distância (${srcLabel})</h3>
       <p>PPM, Conformidade e/ou Contrato não preenchidos. Mostrando apenas distâncias e ordem ideal de visita aos mercados.</p>
@@ -899,27 +894,23 @@ async function generateDistanceResults(researcherData, cidade) {
       html += `<table><thead><tr><th></th>`;
       rd.markets.forEach(m => { html += `<th style="font-size:9px;">${m.name}</th>`; });
       html += `</tr></thead><tbody>`;
-      for (let i = 0; i < rd.markets.length; i++) {
-        const m1 = rd.markets[i];
+      rd.markets.forEach((m1, i) => {
         html += `<tr><td style="font-weight:600;font-size:10px;">${m1.name}</td>`;
-        for (let j = 0; j < rd.markets.length; j++) {
+        rd.markets.forEach((m2, j) => {
           if (i === j) { html += `<td style="color:#334155;">-</td>`; }
           else {
             const c1 = rd.marketCoords[i], c2 = rd.marketCoords[j];
             if (c1 && c2) {
-              const dm = await getDistanceMatrix(c1, c2);
-              if (dm) {
-                html += `<td style="font-size:10px;">${dm.distanceKm.toFixed(1)}km<br><span style="color:#94a3b8;">~${Math.round(dm.durationMin)}min</span></td>`;
-              } else {
-                html += `<td style="color:#475569;">?</td>`;
-              }
+              const km = haversineKm(c1.lat, c1.lng, c2.lat, c2.lng);
+              const mins = estimateDriveMinutes(km);
+              html += `<td style="font-size:10px;">${km.toFixed(1)}km<br><span style="color:#94a3b8;">~${mins}min</span></td>`;
             } else {
               html += `<td style="color:#475569;">?</td>`;
             }
           }
-        }
+        });
         html += `</tr>`;
-      }
+      });
       html += `</tbody></table>`;
     }
     html += `</div>`;
@@ -931,27 +922,24 @@ async function generateDistanceResults(researcherData, cidade) {
     <p>Para obter o diagnóstico completo com viabilidade, cronograma e alertas, preencha os campos de desempenho de cada pesquisador.</p>
   </div>`;
   recoHtml += `<div class="section-title">Orientação por pesquisador</div>`;
-  for (const rd of researcherData) {
-    if (!rd.homeCoord) continue;
+  researcherData.forEach(rd => {
+    if (!rd.homeCoord) return;
     const optOrder = rd.marketCoords.some(c => c) ? optimizeRouteWithDeadlines(rd.homeCoord, rd.marketCoords || [], rd.markets, 0, 0, 15) : [];
-    if (optOrder.length === 0) continue;
+    if (optOrder.length === 0) return;
     recoHtml += `<div class="card"><div class="card-title" style="color:${rd.color};margin-bottom:6px;">${rd.name}</div>
       <p style="font-size:12px;color:#475569;line-height:1.8;">Ordem recomendada de visita (prazo + proximidade):<br>`;
-    for (let pos = 0; pos < optOrder.length; pos++) {
-      const i = optOrder[pos];
+    optOrder.forEach((i, pos) => {
       const m = rd.markets[i];
       const mc = rd.marketCoords[i];
       let distInfo = '';
       if (pos === 0 && rd.homeCoord && mc) {
-        const dm = await getDistanceMatrix(rd.homeCoord, mc);
-        if (dm) {
-          distInfo = ` (${dm.distanceKm.toFixed(1)}km da casa)`;
-        }
+        const km = haversineKm(rd.homeCoord.lat, rd.homeCoord.lng, mc.lat, mc.lng);
+        distInfo = ` (${km.toFixed(1)}km da casa)`;
       }
       recoHtml += `<strong style="color:#16a34a;">${pos+1}.</strong> <strong>${m.name}</strong> — Prazo: ${m.deadline}${distInfo}<br>`;
-    }
+    });
     recoHtml += `</p></div>`;
-  }
+  });
   recoContainer.innerHTML = recoHtml;
   container.innerHTML = html;
 }
